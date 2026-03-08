@@ -10,10 +10,10 @@ public class UserHolder {
 
     /**
      * 保存当前登录用户信息到 ThreadLocal
-     * @param user 当前登录用户的 DTO 对象，包含用户 ID、昵称等信息
+     * @param userDTO 当前登录用户的 DTO 对象，包含用户 ID、昵称等信息
      */
-    public static void saveUser(UserDTO user){
-        tl.set(user);
+    public static void saveUser(UserDTO userDTO){
+        tl.set(userDTO);
     }
 
     /**
