@@ -24,8 +24,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     /**
      * 根据商铺 ID 查询店铺信息，采用缓存优先策略（先查 Redis，再查数据库）
-     * @param id 商铺的唯一标识 ID
-     * @return 操作结果，查询成功返回店铺信息，店铺不存在返回"店铺不存在!"错误提示
      */
     @Override
     public Result queryById(Long id) {
@@ -40,11 +38,20 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return Result.ok(shop);
         }
 
+        // 判断命中的是否是空值，用于处理缓存穿透问题
+        if(shopJson != null){
+            // 返回一个错误信息
+            return Result.fail("店铺不存在!");
+        }
+
         // 4.不存在，根据id查询数据库
         Shop shop = getById(id);
 
-        // 5.不存在，返回错误
+        // 5.不存在，返回错误并缓存空值防止缓存穿透
         if(shop == null){
+            // 将空值写入redis
+            stringRedisTemplate.opsForValue().set(key, "", RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
+            // 返回错误信息
             return Result.fail("店铺不存在!");
         }
 
