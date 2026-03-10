@@ -9,6 +9,7 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,31 +28,60 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     /**
      * 秒杀优惠券下单方法
+     * 执行秒杀前的前置校验，包括秒杀时间、库存等，并通过同步锁确保同一用户的请求串行执行
      */
     @Override
-    @Transactional
     public Result seckillVoucher(Long voucherId) {
         // 1.查询优惠券
         SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
 
-        // 2.判断秒杀是否开始
+        // 2.校验秒杀是否已开始
         if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
-            // 尚未开始
             return Result.fail("秒杀尚未开始");
         }
 
-        // 3.判断秒杀是否已经结束
+        // 3.校验秒杀是否已结束
         if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
-            // 秒杀已经结束
             return Result.fail("秒杀已经结束！");
         }
 
-        // 4.判断库存是否充足
+        // 4.校验库存是否充足
         if (voucher.getStock() < 1) {
             return Result.fail("库存不足！");
         }
 
-        // 5.扣减库存，乐观锁防止线程冲突
+        Long userId = UserHolder.getUser().getId();
+
+        // 基于用户 ID 实现线程隔离，确保同一用户的请求串行执行
+        synchronized(userId.toString().intern()){
+            // 获取当前服务的代理对象，确保事务注解生效
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+
+            // 通过代理调用创建订单方法，保证事务一致性
+            return proxy.createVoucherOrder(voucherId);
+        }
+    }
+
+    /**
+     * 创建秒杀订单方法
+     * 在事务中执行一人一单校验、库存扣减和订单创建
+     */
+    @Transactional
+    public Result createVoucherOrder(Long voucherId) {
+        // 5.获取当前登录用户的 ID
+        Long userId = UserHolder.getUser().getId();
+
+        // 5.1 查询用户是否已购买过该优惠券
+        int count = query().eq("user_id", userId)
+                .eq("voucher_id", voucherId)    // 指定优惠券id
+                .count();
+
+        // 5.2 校验是否超过购买限制
+        if (count > 0) {
+            return Result.fail("该商品每人限购1份，您已超过购买限制");
+        }
+
+        // 6.扣减库存并使用乐观锁防止超卖
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock - 1")
                 .eq("voucher_id", voucherId)
@@ -63,21 +93,20 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
-        // 6.创建订单
+        // 7.创建订单并设置订单信息
         VoucherOrder voucherOrder = new VoucherOrder();
-        // 6.1 生成订单ID
+        // 7.1 生成全局唯一订单 ID
         long orderId = redisIdWorker.nextId("order");
         voucherOrder.setId(orderId);
 
-        // 6.2 用户id
-        Long userId = UserHolder.getUser().getId();
+        // 7.2 设置用户 ID
         voucherOrder.setUserId(userId);
 
-        // 6.3 优惠券id
+        // 7.3 设置优惠券 ID
         voucherOrder.setVoucherId(voucherId);
         save(voucherOrder);
 
-        // 7.返回订单ID
+        // 8.返回订单ID
         return Result.ok(orderId);
     }
 }
