@@ -1,102 +1,145 @@
 # 点评系统后端 (hm-dianping)
 
-基于 Spring Boot 的点评系统后端项目，实现仿大众点评的核心功能。
+基于 Spring Boot 构建的分布式点评系统后端，模拟大众点评核心业务场景，深度整合 Redis 实现高性能缓存、分布式锁、秒杀等高级功能。
 
-## 🛠 技术栈
+## 📋 项目概览
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| **后端框架** | Spring Boot 2.3.12.RELEASE | 核心框架 |
-| **数据库** | MySQL 5.x | 关系型数据库 |
-| **ORM** | MyBatis-Plus 3.4.3 | 数据持久层 |
-| **缓存** | Redis | 分布式缓存 |
-| **连接池** | Lettuce | Redis 客户端 |
-| **工具库** | Hutool 5.7.17 | Java 工具类库 |
-| **代码简化** | Lombok | 注解简化代码 |
-| **JDK** | Java 1.8 | 开发环境 |
+| 项目信息 | 详情 |
+|---------|------|
+| **后端框架** | Spring Boot 2.3.12.RELEASE |
+| **开发语言** | Java 1.8 |
+| **数据库** | MySQL 5.x |
+| **缓存中间件** | Redis (Lettuce 连接池) |
+| **ORM 框架** | MyBatis-Plus 3.4.3 |
+| **工具库** | Hutool 5.7.17, Lombok |
+| **服务端口** | 8081 |
 
-## 📁 项目结构
+## 🏗 系统架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Client Layer                          │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│                   Controller Layer                       │
+│  (UserController, ShopController, BlogController...)    │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│                    Service Layer                         │
+│  (UserService, ShopService, BlogService, VoucherService)│
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│                    Mapper Layer                          │
+│         (MyBatis-Plus Data Access Objects)              │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│                  Data Storage Layer                      │
+│        MySQL (Persistent) + Redis (Cache)               │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 📁 目录结构
 
 ```
 hm-dianping/
 ├── src/main/java/com/hmdp/
-│   ├── HmDianPingApplication.java    # 启动类
-│   ├── config/                       # 配置类
-│   │   ├── MybatisConfig.java        # MyBatis 配置
-│   │   └── WebExceptionAdvice.java   # 全局异常处理
-│   ├── controller/                   # 控制器层
-│   │   ├── UserController.java       # 用户接口
-│   │   ├── ShopController.java       # 商铺接口
-│   │   ├── ShopTypeController.java   # 商铺类型接口
-│   │   ├── BlogController.java       # 笔记接口
-│   │   ├── BlogCommentsController.java  # 评论接口
-│   │   ├── FollowController.java     # 关注接口
-│   │   ├── VoucherController.java    # 优惠券接口
-│   │   ├── VoucherOrderController.java  # 优惠券订单接口
-│   │   └── UploadController.java     # 文件上传接口
-│   ├── service/                      # 服务层接口
-│   │   └── impl/                     # 服务层实现
-│   ├── mapper/                       # 数据访问层
-│   ├── entity/                       # 实体类
-│   ├── dto/                          # 数据传输对象
-│   └── utils/                        # 工具类
-└── src/main/resources/
-    ├── application.yaml              # 应用配置文件
-    └── db/
-        └── hmdp.sql                  # 数据库初始化脚本
+│   ├── HmDianPingApplication.java          # Spring Boot 启动类
+│   ├── config/                             # 配置类
+│   │   ├── MybatisConfig.java              # MyBatis-Plus 配置
+│   │   ├── WebExceptionAdvice.java         # 全局异常处理器
+│   │   └── MvcConfig.java                  # MVC 拦截器配置
+│   ├── controller/                         # RESTful API 控制器
+│   │   ├── UserController.java             # 用户管理接口
+│   │   ├── ShopController.java             # 商铺管理接口
+│   │   ├── ShopTypeController.java         # 商铺分类接口
+│   │   ├── BlogController.java             # 笔记管理接口
+│   │   ├── BlogCommentsController.java     # 评论管理接口
+│   │   ├── FollowController.java           # 关注功能接口
+│   │   ├── VoucherController.java          # 优惠券管理接口
+│   │   ├── VoucherOrderController.java     # 优惠券订单接口
+│   │   └── UploadController.java           # 文件上传接口
+│   ├── service/                            # 业务逻辑层
+│   │   ├── I*.java                         # 服务接口
+│   │   └── impl/                           # 服务实现类
+│   ├── mapper/                             # 数据访问层
+│   ├── entity/                             # 实体类
+│   ├── dto/                                # 数据传输对象
+│   └── utils/                              # 工具类
+├── src/main/resources/
+│   ├── application.yaml                    # 应用配置文件
+│   └── db/
+│       └── hmdp.sql                        # 数据库初始化脚本
+├── pom.xml                                 # Maven 依赖配置
+└── README.md                               # 项目文档
 ```
 
-## ✨ 核心功能
+## 🚀 核心功能模块
 
-### 用户模块
-- ✅ 手机验证码登录
-- ✅ 用户信息管理
-- ✅ 登录状态维护
+### 1️⃣ 用户模块
+- **手机验证码登录**: 基于 Redis 实现验证码缓存和 Token 会话管理
+- **用户信息管理**: 支持用户资料查询和更新
+- **登录状态维护**: 使用 Redis String 结构存储用户 Token，实现分布式会话
+- **拦截器链**: LoginInterceptor + RefreshTokenInterceptor 双重拦截机制
 
-### 商铺模块
-- ✅ 商铺详情查询
-- ✅ 商铺 CRUD 操作
-- ✅ 按类型分页查询
-- ✅ 关键字搜索商铺
+### 2️⃣ 商铺模块
+- **商铺查询**: 支持 ID 查询、分类筛选、关键字搜索
+- **缓存优化**: 
+  - 互斥锁解决缓存击穿问题
+  - 逻辑过期实现高并发场景下的缓存可用性
+  - 缓存穿透保护 (空值缓存)
+- **商铺管理**: 完整的 CRUD 操作
 
-### 优惠券模块
-- ✅ 优惠券管理
-- ✅ 秒杀下单
-- ✅ 订单查询
+### 3️⃣ 优惠券秒杀模块
+- **秒杀活动管理**: 秒杀优惠券的发布和管理
+- **分布式锁**: 基于 Redis 实现集群环境下的互斥访问
+- **高并发优化**:
+  - 乐观锁解决超卖问题
+  - 一人一单限制
+  - 异步下单优化性能
 
-### 笔记模块
-- ✅ 笔记发布与浏览
-- ✅ 评论管理
-- ✅ 点赞功能
+### 4️⃣ 笔记模块
+- **笔记发布与浏览**: 支持图文笔记的发布和查看
+- **评论功能**: 笔记评论的增删改查
+- **点赞功能**: 基于 Redis SortedSet 实现点赞排行榜
+- **好友关注**: 基于 Feed 流的关注推送系统
 
-### 关注模块
-- ✅ 用户关注/取关
-- ✅ 关注列表查询
+### 5️⃣ 关注模块
+- **关注/取关**: 用户间的关注关系管理
+- **关注列表**: 查询用户的关注列表和粉丝列表
+- **共同关注**: 计算两个用户的共同关注列表 (Redis 集合交集)
+- **Feed 流推送**: 
+  - 推模式：主动推送给粉丝
+  - 拉模式：从关注列表拉取
+  - 滚动分页：基于时间戳的无限滚动
 
-### 文件上传
-- ✅ 图片上传
+### 6️⃣ 文件上传
+- **图片上传**: 支持图片文件上传至本地服务器
 
-## 🚀 快速开始
+## 🔧 环境要求
 
-### 环境要求
+| 软件 | 版本 | 说明 |
+|------|------|------|
+| JDK | 1.8+ | Java 开发环境 |
+| MySQL | 5.x | 关系型数据库 |
+| Redis | 最新稳定版 | 分布式缓存中间件 |
+| Maven | 3.6+ | 项目构建工具 |
 
-- JDK 1.8+
-- MySQL 5.x
-- Redis
-- Maven 3.6+
+## 📦 快速开始
 
-### 安装步骤
-
-#### 1. 克隆项目
+### 步骤 1: 克隆项目
 
 ```bash
 git clone https://github.com/400lai/Redis-hmdp-2026
 cd hm-dianping
 ```
 
-#### 2. 配置数据库
+### 步骤 2: 配置数据库
 
-编辑 `src/main/resources/application.yaml`:
+编辑 [`application.yaml`](d:\code\Java_IDEAProject\hm-dianping\src\main\resources\application.yaml):
 
 ```yaml
 spring:
@@ -107,82 +150,109 @@ spring:
     password: your_password  # 修改为你的数据库密码
 ```
 
-#### 3. 配置 Redis
+### 步骤 3: 配置 Redis
 
 ```yaml
 spring:
   redis:
-    host: 192.168.100.128  # 修改为你的 Redis 地址
+    host: 192.168.100.128  # 修改为你的 Redis 服务器地址
     port: 6379
     password: your_redis_password  # 如有密码请配置
+    lettuce:
+      pool:
+        max-active: 10
+        max-idle: 10
+        min-idle: 1
 ```
 
-#### 4. 初始化数据库
+### 步骤 4: 初始化数据库
 
-执行 SQL 脚本创建数据库和表:
-
+**方式一：命令行执行**
 ```bash
 mysql -u root -p < src/main/resources/db/hmdp.sql
 ```
 
-或手动在 MySQL 客户端执行 `hmdp.sql` 文件。
+**方式二：MySQL 客户端手动执行**
+1. 登录 MySQL
+2. 执行 `hmdp.sql` 脚本文件
 
-#### 5. 安装依赖
+### 步骤 5: 构建项目
 
 ```bash
 mvn clean install
 ```
 
-#### 6. 启动项目
+### 步骤 6: 启动应用
 
-**方式一：使用 Maven**
-
+**方式一：Maven 运行**
 ```bash
 mvn spring-boot:run
 ```
 
-**方式二：运行启动类**
+**方式二：IDE 运行**
+直接运行 [`HmDianPingApplication.java`](d:\code\Java_IDEAProject\hm-dianping\src\main\java\com\hmdp\HmDianPingApplication.java)
 
-直接运行 `src/main/java/com/hmdp/HmDianPingApplication.java`
+启动成功后访问：`http://localhost:8081`
 
-项目启动后访问：`http://localhost:8081`
-
-## 📚 API 文档
+## 📖 API 接口文档
 
 ### 用户接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/user/code` | 发送手机验证码 |
-| POST | `/user/login` | 用户登录 |
-| POST | `/user/logout` | 用户登出 |
-| GET | `/user/me` | 获取当前用户信息 |
-| GET | `/user/info/{id}` | 获取指定用户信息 |
+| 方法 | 路径 | 说明 | 请求参数 |
+|------|------|------|----------|
+| POST | `/user/code` | 发送验证码 | `phone` |
+| POST | `/user/login` | 登录 | `LoginFormDTO` |
+| POST | `/user/logout` | 登出 | - |
+| GET | `/user/me` | 当前用户信息 | - |
+| GET | `/user/info/{id}` | 指定用户信息 | `id` |
 
 ### 商铺接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/shop/{id}` | 根据 ID 查询商铺 |
-| POST | `/shop` | 新增商铺 |
-| PUT | `/shop` | 更新商铺 |
-| GET | `/shop/of/type` | 按类型查询商铺 |
-| GET | `/shop/of/name` | 按名称搜索商铺 |
+| 方法 | 路径 | 说明 | 请求参数 |
+|------|------|------|----------|
+| GET | `/shop/{id}` | 商铺详情 | `id` |
+| POST | `/shop` | 新增商铺 | `Shop` |
+| PUT | `/shop` | 更新商铺 | `Shop` |
+| GET | `/shop/of/type` | 按类型查询 | `typeId` |
+| GET | `/shop/of/name` | 按名称搜索 | `name` |
 
 ### 优惠券接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/voucher-order/seckill/{id}` | 秒杀优惠券 |
+| 方法 | 路径 | 说明 | 请求参数 |
+|------|------|------|----------|
+| GET | `/voucher/list` | 优惠券列表 | - |
+| POST | `/voucher-order/seckill/{id}` | 秒杀下单 | `id` |
+| GET | `/voucher-order/{id}` | 订单查询 | `id` |
 
 ### 笔记接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/blog/{id}` | 查询笔记详情 |
-| POST | `/blog` | 发布笔记 |
+| 方法 | 路径 | 说明 | 请求参数 |
+|------|------|------|----------|
+| GET | `/blog/hot` | 热门笔记 | - |
+| GET | `/blog/{id}` | 笔记详情 | `id` |
+| POST | `/blog` | 发布笔记 | `Blog` |
+| PUT | `/blog` | 更新笔记 | `Blog` |
+| DELETE | `/blog/{id}` | 删除笔记 | `id` |
 
-### 文件上传接口
+### 评论接口
+
+| 方法 | 路径 | 说明 | 请求参数 |
+|------|------|------|----------|
+| GET | `/blog/comments/{blogId}` | 笔记评论列表 | `blogId` |
+| POST | `/blog/comments` | 发布评论 | `BlogComments` |
+| PUT | `/blog/comments` | 更新评论 | `BlogComments` |
+| DELETE | `/blog/comments/{id}` | 删除评论 | `id` |
+
+### 关注接口
+
+| 方法 | 路径 | 说明 | 请求参数 |
+|------|------|------|----------|
+| PUT | `/follow/{followUserId}` | 关注/取关 | `followUserId` |
+| GET | `/follow/list/{userId}` | 关注列表 | `userId` |
+| GET | `/follow/common/{uid}` | 共同关注 | `uid` |
+| GET | `/follow/feeds` | Feed 流 | 滚动分页参数 |
+
+### 文件上传
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
