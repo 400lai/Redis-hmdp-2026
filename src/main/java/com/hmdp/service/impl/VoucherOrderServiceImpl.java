@@ -8,8 +8,10 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Resource
     private RedisIdWorker redisIdWorker;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 秒杀优惠券下单方法
@@ -50,15 +55,27 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
+        // 5.获取当前登录用户的 ID
         Long userId = UserHolder.getUser().getId();
 
-        // 基于用户 ID 实现线程隔离，确保同一用户的请求串行执行
-        synchronized(userId.toString().intern()){
-            // 获取当前服务的代理对象，确保事务注解生效
-            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+        // 创建Redis分布式锁对象，用于实现线程隔离
+        SimpleRedisLock lock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
+        // 尝试获取锁，设置锁的过期时间为 120 秒
+        boolean isLock = lock.tryLock(120L);
+        // 如果获取锁失败，说明该用户已经有请求在处理中
+        if (!isLock) {
+            // 获取锁失败，返回错误或重试
+            return Result.fail("请勿重复下单！");
+        }
 
+        try {
+            // 获取当前服务的 AOP代理对象，确保@Transactional 事务注解生效
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
             // 通过代理调用创建订单方法，保证事务一致性
             return proxy.createVoucherOrder(voucherId);
+        } finally {
+            // 无论是否异常，都要释放锁
+            lock.unlock();
         }
     }
 

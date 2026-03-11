@@ -7,13 +7,17 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
+
+/**
+ * 基于 Redis 的分布式全局唯一ID生成器
+ */
 @Component
 public class RedisIdWorker {
 
     /**
      * 开始时间戳
      */
-    private static final long BEGIN_TIMESTAMP = 1640995200L;
+    private static final long BEGIN_TIMESTAMP = 1767225600L;
 
     /**
      * 序列号位数
@@ -45,7 +49,7 @@ public class RedisIdWorker {
 
 //    public static void main(String[] args){
 //        // 创建 2022 年 1 月 1 日零点的日期时间对象
-//        LocalDateTime time = LocalDateTime.of(2022, 1, 1, 0, 0, 0);
+//        LocalDateTime time = LocalDateTime.of(2026, 1, 1, 0, 0, 0);
 //
 //        // 将本地日期时间转换为 UTC 时区的 Unix 时间戳（秒）
 //        long second = time.toEpochSecond(ZoneOffset.UTC);
