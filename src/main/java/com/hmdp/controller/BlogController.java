@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import java.util.List;
 
+import static com.hmdp.utils.SystemConstants.MAX_PAGE_SIZE;
+
 /**
  * 博客控制器 - 处理探店博文相关的 HTTP 请求，包括发布、点赞、查询个人博客和热门博客等操作
  */
@@ -52,7 +54,14 @@ public class BlogController {
      */
     @GetMapping("/of/me")
     public Result queryMyBlog(@RequestParam(value = "current", defaultValue = "1") Integer current) {
-        return blogService.queryMyBlog(current);
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        // 根据用户查询
+        Page<Blog> page = blogService.query()
+                .eq("user_id", user.getId()).page(new Page<>(current, MAX_PAGE_SIZE));
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        return Result.ok(records);
     }
 
     /**
