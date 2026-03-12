@@ -15,7 +15,7 @@ import java.time.format.DateTimeFormatter;
 public class RedisIdWorker {
 
     /**
-     * 开始时间戳
+     * 开始时间戳：LocalDateTime.of(2026, 1, 1, 0, 0, 0)
      */
     private static final long BEGIN_TIMESTAMP = 1767225600L;
 
@@ -46,14 +46,5 @@ public class RedisIdWorker {
         // 3.拼接并返回
         return timestamp << COUNT_BITS | count;
     }
-
-//    public static void main(String[] args){
-//        // 创建 2022 年 1 月 1 日零点的日期时间对象
-//        LocalDateTime time = LocalDateTime.of(2026, 1, 1, 0, 0, 0);
-//
-//        // 将本地日期时间转换为 UTC 时区的 Unix 时间戳（秒）
-//        long second = time.toEpochSecond(ZoneOffset.UTC);
-//        System.out.println(second);
-//    }
 
 }

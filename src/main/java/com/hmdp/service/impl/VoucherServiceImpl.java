@@ -43,6 +43,8 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
 
     /**
      * 新增秒杀优惠券（事务方法，同时保存优惠券和秒杀信息）
+     * 该方法用于创建秒杀优惠券活动，包括保存优惠券基本信息、秒杀相关信息到数据库，
+     * 并将秒杀库存预热到 Redis 缓存中，以提高秒杀性能。
      * @param voucher 优惠券对象，包含优惠券基本信息和秒杀活动信息（库存、开始时间、结束时间）
      */
     @Override

@@ -1,15 +1,14 @@
 package com.hmdp.service.impl;
 
 import com.hmdp.dto.Result;
-import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
-import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
@@ -19,11 +18,15 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
-import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-
+@Slf4j
 @Service
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
 
@@ -46,6 +49,86 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SECKILL_SCRIPT.setResultType(Long.class);        // 指定返回值类型
     }
 
+    private BlockingQueue<VoucherOrder> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
+    private final static ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
+
+    /**
+     * 初始化方法，在 Bean 构造完成后自动执行
+     * 该方法使用@PostConstruct 注解标记，会在依赖注入完成后被 Spring 容器自动调用。
+     * 主要功能是启动秒杀订单处理线程，将 VoucherOrderTask 任务提交到线程池，
+     * 用于异步处理阻塞队列中的订单创建任务。
+     */
+    @PostConstruct
+    private void init(){
+        SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderTask());
+    }
+
+    /**
+     * 秒杀订单处理任务
+     * 该内部类实现了 Runnable 接口，作为独立的线程任务持续从阻塞队列中获取订单信息，
+     * 并调用 handleVoucherOrder 方法处理订单创建逻辑。
+     * 采用无限循环确保能持续处理队列中的订单，通过异常捕获保证单个订单处理失败不影响后续订单。
+     */
+    private class VoucherOrderTask implements Runnable {
+        @Override
+        public void run() {
+            while(true){
+                try {
+                    // 1.获取队列中的订单信息
+                    VoucherOrder voucherOrder = orderTasks.take();
+                    // 2.创建订单
+                    handleVoucherOrder(voucherOrder);
+
+                } catch (Exception e) {
+                    log.error("处理订单异常", e);
+                }
+            }
+
+        }
+    }
+
+    /**
+     * 处理优惠券订单创建
+     * 该方法负责在异步线程中处理订单创建，通过 Redisson 分布式锁实现"一人一单"控制，
+     * 确保同一用户的订单请求串行执行，防止并发下单导致的数据不一致问题。
+     * 通过 AOP 代理调用事务方法，保证订单创建的原子性和一致性。
+     */
+    private void handleVoucherOrder(VoucherOrder voucherOrder) {
+        // 1.获取用户
+        Long userId = voucherOrder.getUserId();
+        // 2.创建锁对象
+        RLock lock = redissonClient.getLock("lock:order:" + userId);
+        // 3.尝试获取锁，设置锁的过期时间为 120 秒
+        boolean isLock = lock.tryLock();
+        // 4.如果获取锁失败，说明该用户已经有请求在处理中
+        if (!isLock) {
+            // 获取锁失败，返回错误或重试
+            log.error("不允许重复下单");
+            return ;
+        }
+
+        try {
+            // 通过代理调用创建订单方法，保证事务一致性
+            proxy.createVoucherOrder(voucherOrder);
+        } finally {
+            // 无论是否异常，都要释放锁
+            lock.unlock();
+        }
+    }
+
+    /**
+     * AOP 代理对象引用
+     * 用于在异步线程中通过代理调用带有@Transactional 注解的方法，确保事务注解生效。
+     * 该代理对象在 seckillVoucher 方法中通过 AopContext.currentProxy() 获取并赋值。
+     */
+    private IVoucherOrderService proxy;
+
+    /**
+     * 秒杀优惠券下单方法
+     * 该方法实现高并发场景下的秒杀下单流程，通过 Lua 脚本在 Redis 中预扣减库存，
+     * 校验用户的购买资格（库存是否充足、是否重复下单等）。
+     * 具备购买资格的订单会被放入阻塞队列，由后台异步线程处理实际订单创建。
+     */
     @Override
     public Result seckillVoucher(Long voucherId) {
         // 获取登录用户id
@@ -66,10 +149,21 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
 
         // 2.2 为0，有购买资格，把下单信息保存到阻塞队列
+        VoucherOrder voucherOrder = new VoucherOrder();
+        // 2.3 生成全局唯一订单 ID
         long orderId = redisIdWorker.nextId("order");
-        // TODO 保存阻塞队列
+        voucherOrder.setId(orderId);
+        // 2.4 设置用户 ID
+        voucherOrder.setUserId(userId);
+        // 2.5 设置优惠券 ID
+        voucherOrder.setVoucherId(voucherId);
+        // 2.6 放入阻塞队列
+        orderTasks.add(voucherOrder);
 
-        // 3.返回订单id
+        // 3.获取代理对象
+        proxy = (IVoucherOrderService) AopContext.currentProxy();
+
+        // 4.返回订单id
         return Result.ok(orderId);
     }
 
@@ -123,50 +217,41 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 //    }
 
     /**
-     * 创建秒杀订单方法
-     * 在事务中执行一人一单校验、库存扣减和订单创建
+     * 创建秒杀订单（事务方法）
+     * 该方法在事务中执行订单创建的核心逻辑，包括一人一单校验、库存扣减和订单保存。
+     * 使用@Transactional 注解保证操作的原子性，任一环节失败都会回滚整个事务。
+     * 通过乐观锁（stock > 0 条件）防止超卖问题，确保库存数据的准确性。
      */
     @Transactional
-    public Result createVoucherOrder(Long voucherId) {
+    public void createVoucherOrder(VoucherOrder voucherOrder) {
         // 5.获取当前登录用户的 ID
-        Long userId = UserHolder.getUser().getId();
+        Long userId = voucherOrder.getId();
 
         // 5.1 查询用户是否已购买过该优惠券
         int count = query().eq("user_id", userId)
-                .eq("voucher_id", voucherId)    // 指定优惠券id
+                .eq("voucher_id", voucherOrder.getVoucherId())    // 指定优惠券id
                 .count();
 
         // 5.2 校验是否超过购买限制
         if (count > 0) {
-            return Result.fail("该商品每人限购1份，您已超过购买限制");
+            log.error("该商品每人限购1份，您已超过购买限制");
+            return ;
         }
 
         // 6.扣减库存并使用乐观锁防止超卖
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock - 1")
-                .eq("voucher_id", voucherId)
+                .eq("voucher_id", voucherOrder.getVoucherId())
                 .gt("stock", 0)    // where id = ? and stock > 0
                 .update();
 
         if (!success) {
             // 扣减库存失败
-            return Result.fail("库存不足！");
+            log.error("库存不足！");
+            return ;
         }
 
         // 7.创建订单并设置订单信息
-        VoucherOrder voucherOrder = new VoucherOrder();
-        // 7.1 生成全局唯一订单 ID
-        long orderId = redisIdWorker.nextId("order");
-        voucherOrder.setId(orderId);
-
-        // 7.2 设置用户 ID
-        voucherOrder.setUserId(userId);
-
-        // 7.3 设置优惠券 ID
-        voucherOrder.setVoucherId(voucherId);
         save(voucherOrder);
-
-        // 8.返回订单ID
-        return Result.ok(orderId);
     }
 }

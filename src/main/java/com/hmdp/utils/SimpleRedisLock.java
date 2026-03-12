@@ -8,6 +8,11 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 基于 Redis 的简单分布式锁实现
+ * 使用 Redis 的 SETNX 命令实现分布式环境下的互斥锁，支持自动过期防止死锁。
+ * 通过 Lua 脚本保证解锁操作的原子性，避免误删其他线程的锁。
+ */
 public class SimpleRedisLock implements ILock{
 
     private String name;
