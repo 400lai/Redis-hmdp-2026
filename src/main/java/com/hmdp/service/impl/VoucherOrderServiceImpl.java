@@ -13,12 +13,15 @@ import com.hmdp.utils.UserHolder;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.Collections;
 
 
 @Service
@@ -36,54 +39,88 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedissonClient redissonClient;
 
+    private final static DefaultRedisScript<Long> SECKILL_SCRIPT;
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();     // 创建脚本对象实例
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua")); // 指定脚本位置
+        SECKILL_SCRIPT.setResultType(Long.class);        // 指定返回值类型
+    }
+
+    @Override
+    public Result seckillVoucher(Long voucherId) {
+        // 获取登录用户id
+        Long userId = UserHolder.getUser().getId();
+
+        // 1.执行lua脚本
+        Long result = stringRedisTemplate.execute(
+                SECKILL_SCRIPT,
+                Collections.emptyList(),
+                voucherId.toString(), userId.toString()
+        );
+
+        // 2.判断结果是否为0
+        int resultCode = result.intValue();
+        if(resultCode != 0){
+            // 2.1 不为0，代表没有购买资格
+            return Result.fail(resultCode == 1 ? "库存不足" : "不能重复下单");
+        }
+
+        // 2.2 为0，有购买资格，把下单信息保存到阻塞队列
+        long orderId = redisIdWorker.nextId("order");
+        // TODO 保存阻塞队列
+
+        // 3.返回订单id
+        return Result.ok(orderId);
+    }
+
     /**
      * 秒杀优惠券下单方法
      * 执行秒杀前的前置校验，包括秒杀时间、库存等，并通过同步锁确保同一用户的请求串行执行
      */
-    @Override
-    public Result seckillVoucher(Long voucherId) {
-        // 1.查询优惠券
-        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
-
-        // 2.校验秒杀是否已开始
-        if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
-            return Result.fail("秒杀尚未开始");
-        }
-
-        // 3.校验秒杀是否已结束
-        if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
-            return Result.fail("秒杀已经结束！");
-        }
-
-        // 4.校验库存是否充足
-        if (voucher.getStock() < 1) {
-            return Result.fail("库存不足！");
-        }
-
-        // 5.获取当前登录用户的 ID
-        Long userId = UserHolder.getUser().getId();
-
-        // 创建Redis分布式锁对象，用于实现线程隔离
-        // SimpleRedisLock lock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
-        RLock lock = redissonClient.getLock("lock:order:" + userId);
-        // 尝试获取锁，设置锁的过期时间为 120 秒
-        boolean isLock = lock.tryLock();
-        // 如果获取锁失败，说明该用户已经有请求在处理中
-        if (!isLock) {
-            // 获取锁失败，返回错误或重试
-            return Result.fail("请勿重复下单！");
-        }
-
-        try {
-            // 获取当前服务的 AOP代理对象，确保@Transactional 事务注解生效
-            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
-            // 通过代理调用创建订单方法，保证事务一致性
-            return proxy.createVoucherOrder(voucherId);
-        } finally {
-            // 无论是否异常，都要释放锁
-            lock.unlock();
-        }
-    }
+//    @Override
+//    public Result seckillVoucher(Long voucherId) {
+//        // 1.查询优惠券
+//        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+//
+//        // 2.校验秒杀是否已开始
+//        if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
+//            return Result.fail("秒杀尚未开始");
+//        }
+//
+//        // 3.校验秒杀是否已结束
+//        if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
+//            return Result.fail("秒杀已经结束！");
+//        }
+//
+//        // 4.校验库存是否充足
+//        if (voucher.getStock() < 1) {
+//            return Result.fail("库存不足！");
+//        }
+//
+//        // 5.获取当前登录用户的 ID
+//        Long userId = UserHolder.getUser().getId();
+//
+//        // 创建Redis分布式锁对象，用于实现线程隔离
+//        // SimpleRedisLock lock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
+//        RLock lock = redissonClient.getLock("lock:order:" + userId);
+//        // 尝试获取锁，设置锁的过期时间为 120 秒
+//        boolean isLock = lock.tryLock();
+//        // 如果获取锁失败，说明该用户已经有请求在处理中
+//        if (!isLock) {
+//            // 获取锁失败，返回错误或重试
+//            return Result.fail("请勿重复下单！");
+//        }
+//
+//        try {
+//            // 获取当前服务的 AOP代理对象，确保@Transactional 事务注解生效
+//            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+//            // 通过代理调用创建订单方法，保证事务一致性
+//            return proxy.createVoucherOrder(voucherId);
+//        } finally {
+//            // 无论是否异常，都要释放锁
+//            lock.unlock();
+//        }
+//    }
 
     /**
      * 创建秒杀订单方法
