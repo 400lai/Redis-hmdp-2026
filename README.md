@@ -1,46 +1,68 @@
 # 点评系统后端 (hm-dianping)
 
-基于 Spring Boot 构建的分布式点评系统后端，模拟大众点评核心业务场景，深度整合 Redis 实现高性能缓存、分布式锁、秒杀等高级功能。
+<div align="center">
+
+基于 Spring Boot + Redis 的分布式点评系统，模拟大众点评核心业务场景
+
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.3.12.RELEASE-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Java](https://img.shields.io/badge/JDK-1.8+-orange.svg)](https://www.oracle.com/java/)
+[![Redis](https://img.shields.io/badge/Redis-Latest-red.svg)](https://redis.io/)
+[![MyBatis-Plus](https://img.shields.io/badge/MyBatis--Plus-3.4.3-blue.svg)](https://baomidou.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+</div>
+
+---
+
+本项目是一个基于 Spring Boot 构建的分布式点评系统后端，深度整合 Redis 实现高性能缓存、分布式锁、秒杀等高并发场景解决方案。项目实现了类似大众点评的核心业务功能，包括用户登录、商铺管理、优惠券秒杀、笔记分享、关注推送等模块。
 
 ## 📋 项目概览
 
-| 项目信息 | 详情 |
-|---------|------|
-| **后端框架** | Spring Boot 2.3.12.RELEASE |
-| **开发语言** | Java 1.8 |
-| **数据库** | MySQL 5.x |
-| **缓存中间件** | Redis (Lettuce 连接池) |
-| **ORM 框架** | MyBatis-Plus 3.4.3 |
-| **工具库** | Hutool 5.7.17, Lombok |
-| **服务端口** | 8081 |
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| **后端框架** | Spring Boot 2.3.12.RELEASE | 核心框架 |
+| **开发语言** | Java 1.8 | 基础语言 |
+| **数据库** | MySQL 5.x | 数据持久化 |
+| **缓存中间件** | Redis | 分布式缓存、分布式锁 |
+| **ORM 框架** | MyBatis-Plus 3.4.3 | 数据访问层 |
+| **连接池** | Lettuce + Commons Pool2 | Redis 连接池管理 |
+| **分布式锁** | Redisson 3.16.2 | 分布式锁实现 |
+| **工具库** | Hutool 5.7.17 | Java 工具类库 |
+| **开发辅助** | Lombok | 简化代码 |
+| **Web 框架** | Spring MVC | RESTful API |
+
+---
 
 ## 🏗 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Client Layer                          │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│                   Controller Layer                       │
-│  (UserController, ShopController, BlogController...)    │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│                    Service Layer                         │
-│  (UserService, ShopService, BlogService, VoucherService)│
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│                    Mapper Layer                          │
-│         (MyBatis-Plus Data Access Objects)              │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│                  Data Storage Layer                      │
-│        MySQL (Persistent) + Redis (Cache)               │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      Client Layer                            │
+│                    (HTTP Requests)                           │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Controller Layer                          │
+│  UserController | ShopController | BlogController | ...     │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                     Service Layer                            │
+│  业务逻辑处理 + Redis 缓存 + 分布式锁 + 事务管理              │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                     Mapper Layer                             │
+│              MyBatis-Plus Data Access Objects                │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  Data Storage Layer                          │
+│         MySQL (持久化)  +  Redis (缓存/分布式锁)             │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+---
 
 ## 📁 目录结构
 
@@ -51,7 +73,8 @@ hm-dianping/
 │   ├── config/                             # 配置类
 │   │   ├── MybatisConfig.java              # MyBatis-Plus 配置
 │   │   ├── WebExceptionAdvice.java         # 全局异常处理器
-│   │   └── MvcConfig.java                  # MVC 拦截器配置
+│   │   ├── MvcConfig.java                  # MVC 拦截器配置
+│   │   └── RedissonConfig.java             # Redisson 配置
 │   ├── controller/                         # RESTful API 控制器
 │   │   ├── UserController.java             # 用户管理接口
 │   │   ├── ShopController.java             # 商铺管理接口
@@ -69,6 +92,12 @@ hm-dianping/
 │   ├── entity/                             # 实体类
 │   ├── dto/                                # 数据传输对象
 │   └── utils/                              # 工具类
+│       ├── CacheClient.java                # 缓存客户端 (封装缓存操作)
+│       ├── RedisIdWorker.java              # 基于 Redis 的全局 ID 生成器
+│       ├── SimpleRedisLock.java            # 简易 Redis 分布式锁
+│       ├── ILock.java                      # 锁接口
+│       ├── UserHolder.java                 # 用户上下文持有者
+│       └── ...
 ├── src/main/resources/
 │   ├── application.yaml                    # 应用配置文件
 │   └── db/
@@ -76,6 +105,8 @@ hm-dianping/
 ├── pom.xml                                 # Maven 依赖配置
 └── README.md                               # 项目文档
 ```
+
+---
 
 ## 🚀 核心功能模块
 
@@ -139,7 +170,7 @@ cd hm-dianping
 
 ### 步骤 2: 配置数据库
 
-编辑 [`application.yaml`](d:\code\Java_IDEAProject\hm-dianping\src\main\resources\application.yaml):
+编辑 [`application.yaml`](src/main/resources/application.yaml):
 
 ```yaml
 spring:
@@ -190,7 +221,7 @@ mvn spring-boot:run
 ```
 
 **方式二：IDE 运行**
-直接运行 [`HmDianPingApplication.java`](d:\code\Java_IDEAProject\hm-dianping\src\main\java\com\hmdp\HmDianPingApplication.java)
+直接运行 [`HmDianPingApplication.java`](src/main/java/com/hmdp/HmDianPingApplication.java)
 
 启动成功后访问：`http://localhost:8081`
 
