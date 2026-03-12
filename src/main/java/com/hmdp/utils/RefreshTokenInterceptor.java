@@ -11,6 +11,9 @@ import javax.servlet.http.HttpServletResponse;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import static com.hmdp.utils.RedisConstants.LOGIN_USER_KEY;
+import static com.hmdp.utils.RedisConstants.LOGIN_USER_TTL;
+
 /**
  * 刷新 Token 的拦截器，用于在请求处理过程中验证用户身份并自动刷新 token 有效期
  * 该拦截器通过检查请求头中的 token，从 Redis 中获取用户信息并保存到 ThreadLocal，
@@ -40,7 +43,7 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         }
 
         // 2.基于token获取redis中的用户
-        String tokenKey = RedisConstants.LOGIN_USER_KEY + token;
+        String tokenKey = LOGIN_USER_KEY + token;
         Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(tokenKey);
 
         // 3.判断用户是否存在
@@ -54,7 +57,7 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         UserHolder.saveUser(userDTO);
 
         // 6.刷新token有效期
-        stringRedisTemplate.expire(tokenKey, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
         // 7.放行
         return true;
     }
