@@ -3,6 +3,7 @@ package com.hmdp.utils;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.hmdp.dto.UserDTO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -19,6 +20,7 @@ import static com.hmdp.utils.RedisConstants.LOGIN_USER_TTL;
  * 该拦截器通过检查请求头中的 token，从 Redis 中获取用户信息并保存到 ThreadLocal，
  * 同时刷新 token 的过期时间，实现用户登录状态的自动续期
  */
+@Slf4j
 public class RefreshTokenInterceptor implements HandlerInterceptor {
     // Spring创建的对象，依靠Spring IoC管理，实现依赖注入
     // LoginInterceptor是自己创建的对象，没有Spring IoC管理，无法实现依赖注入
@@ -44,6 +46,7 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
 
         // 2.基于token获取redis中的用户
         String tokenKey = LOGIN_USER_KEY + token;
+        // log.info("RefreshTokenInterceptor - tokenKey: {}", tokenKey);
         Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(tokenKey);
 
         // 3.判断用户是否存在

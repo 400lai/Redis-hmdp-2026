@@ -84,6 +84,12 @@ public class BlogController {
         return blogService.queryBlogById(id);
     }
 
+    /**
+     * 查询博客的点赞用户列表
+     * 返回点赞该博客的前 5 名用户信息，按点赞时间排序
+     * @param id 博客 ID，用于查询点赞该博客的用户
+     * @return 操作结果，成功返回点赞用户列表，包含用户昵称、头像等信息
+     */
     @GetMapping("/likes/{id}")
     public Result queryBlogLikes(@PathVariable("id") Long id) {
         return blogService.queryBlogLikes(id);

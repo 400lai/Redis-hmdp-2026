@@ -7,13 +7,16 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,9 +27,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
+import static com.hmdp.utils.RedisConstants.FEED_KEY;
 import static com.hmdp.utils.SystemConstants.MAX_PAGE_SIZE;
 
-
+@Slf4j
 @Service
 public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
 
@@ -34,15 +38,38 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private IUserService userService;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private IFollowService followService;
 
+    /**
+     * 保存探店博文并推送给粉丝
+     * 用户发布新笔记时，保存到数据库后，将笔记 ID 推送到所有粉丝的收件箱中，实现关注推送功能
+     * @param blog 博客对象，包含笔记内容、图片等信息，调用前需确保内容完整
+     * @return 操作结果，成功返回博客 ID，失败返回错误信息
+     */
     @Override
     public Result saveBlog(Blog blog) {
-        // 获取登录用户
+        // 1.获取登录用户
         UserDTO userDTO = UserHolder.getUser();
         blog.setUserId(userDTO.getId());
-        // 保存探店博文
-        save(blog);
-        // 返回id
+        // 2.保存探店博文
+        boolean isSuccess = save(blog);
+        if (!isSuccess){
+            return Result.fail("新增笔记失败！");
+        }
+
+        // 3.查询笔记作者的所有粉丝 select * from tb_follow where follow_user_id = ?
+        List<Follow> follows = followService.query().eq("follow_user_id", userDTO.getId()).list();
+
+        // 4.推送笔记id给所有粉丝
+        for(Follow follow : follows){
+            // 4.1 获取粉丝id
+            Long followId = follow.getUserId();
+            // 4.2 推送
+            String key = FEED_KEY + followId;
+            stringRedisTemplate.opsForZSet().add(key, blog.getId().toString(), System.currentTimeMillis());
+        }
+        // 5.返回id
         return Result.ok(blog.getId());
     }
 
@@ -75,6 +102,11 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 stringRedisTemplate.opsForZSet().remove(key, userId.toString());
             }
         }
+
+        // 查询当前博客的点赞数量
+        Blog blog = getById(id);
+        log.info("博客 {} 当前点赞数：{}", id, blog != null ? blog.getLiked() : 0);
+
         return Result.ok();
     }
 
@@ -119,6 +151,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         return Result.ok(blog);
     }
 
+    /**
+     * 查询博客的点赞用户列表
+     * 返回点赞该博客的前 5 名用户信息，按点赞时间排序
+     * @param id 博客 ID，用于查询点赞该博客的用户
+     * @return 操作结果，成功返回点赞用户列表，包含用户昵称、头像等信息
+     */
     @Override
     public Result queryBlogLikes(Long id) {
         String key = BLOG_LIKED_KEY + id;
@@ -150,7 +188,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             // 用户未登录，无需查询是否点赞
             return;
         }
-        Long userId = UserHolder.getUser().getId();
+        Long userId = user.getId();
 
         // 2.判断当前登录用户是否已经点赞
         String key = BLOG_LIKED_KEY + blog.getId();

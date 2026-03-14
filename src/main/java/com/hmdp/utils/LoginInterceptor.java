@@ -1,20 +1,16 @@
 package com.hmdp.utils;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.StrUtil;
-import com.hmdp.dto.UserDTO;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 登录拦截器，用于验证用户登录状态
  * 实现 HandlerInterceptor 接口，拦截请求检查用户是否已登录
  */
+@Slf4j
 public class LoginInterceptor implements HandlerInterceptor {
 
     /**
@@ -25,6 +21,9 @@ public class LoginInterceptor implements HandlerInterceptor {
      */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        log.info("LoginInterceptor - 请求 URL: {}", request.getRequestURL());
+        log.info("LoginInterceptor - ThreadLocal 中用户：{}", UserHolder.getUser());
+
         // 1.判断是否需要拦截（ThreadLocal中是否有用户）
         if(UserHolder.getUser() == null){
             // 没有，需要拦截，设置状态码
