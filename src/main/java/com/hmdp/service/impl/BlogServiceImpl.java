@@ -5,6 +5,7 @@ import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Follow;
@@ -18,9 +19,11 @@ import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -176,6 +179,60 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 .collect(Collectors.toList());
         // 4.返回
         return Result.ok(userDTOS);
+    }
+
+    @Override
+    public Result queryBlogOfFollow(Long max, Integer offset) {
+        // 1.获取当前登录用户
+        Long userId = UserHolder.getUser().getId();
+        // 2.查询收件箱 ZREVRANGEBYSCORE key Max Min LIMIT offset count
+        String key = FEED_KEY + userId;
+        Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet()
+                .reverseRangeByScoreWithScores(key, 0, max, offset, 2);
+
+        // 3.非空判断
+        if(typedTuples == null || typedTuples.isEmpty()){
+            return Result.ok();
+        }
+
+        // 4.解析数据：blogId、 minTime（时间戳）、 offset
+        // 根据集合大小初始化ArrayList的容量，避免后续添加元素时频繁扩容，提升性能
+        List<Long> ids = new ArrayList<>(typedTuples.size());
+        long minTime = 0;
+        int os = 1; // 分数值等于最小元素的个数
+        for(ZSetOperations.TypedTuple<String> tuple : typedTuples){ // 5 4 4 2 2
+            // 4.1 获取id
+            ids.add(Long.valueOf(tuple.getValue()));
+
+            // 4.2 获取分数（时间戳）
+            long time = tuple.getScore().longValue();
+            if (time == minTime){
+                os++;
+            }else {
+                minTime = time;
+                os = 1;
+            }
+        }
+
+        // 5.根据id查询blog
+        // 使用Hutool工具类将List<Long>类型的用户ID集合拼接成逗号分隔的字符串格式（如："5,1,3"）
+        String idStr = StrUtil.join(",", ids);
+        List<Blog> blogs = query().in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list();
+
+        for (Blog blog : blogs) {
+            // 5.1 查看笔记时显示作者的头像信息
+            queryBlogUser(blog);
+            // 5.2 显示这条笔记是否被当前登录用户点赞
+            isBlogLiked(blog);
+        }
+
+        // 6.封装并返回
+        ScrollResult scrollResult = new ScrollResult();
+        scrollResult.setList(blogs);
+        scrollResult.setOffset(os);
+        scrollResult.setMinTime(minTime);
+
+        return Result.ok(scrollResult);
     }
 
     /**
