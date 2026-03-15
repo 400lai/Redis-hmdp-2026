@@ -12,12 +12,15 @@ import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
 import cn.hutool.core.util.RandomUtil;
+import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -112,6 +115,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         // 8.返回token
         return Result.ok(token);
+    }
+
+    /**
+     * 用户签到功能
+     * 将当前用户在本月的签到记录写入 Redis，使用位图存储以节省空间
+     */
+    @Override
+    public Result sign() {
+        // 1.获取当前登录用户 ID
+        Long userId = UserHolder.getUser().getId();
+
+        // 2.获取当前日期时间
+        LocalDateTime now = LocalDateTime.now();
+
+        // 3.构建 Redis 位图 Key：用户签到前缀 + 用户 ID + 年月
+        String keySuffix = now.format(DateTimeFormatter.ofPattern("yyyyMM"));
+        String key = USER_SIGN_KEY + userId + keySuffix;
+
+        // 4.获取今天是本月的第几天（1-31）
+        int dayOfMonth = now.getDayOfMonth();
+
+        // 5.使用 Redis SETBIT 命令记录签到，offset 从 0 开始：SETBIT key offset 1
+        stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1, true);
+        return Result.ok();
     }
 
     /**
