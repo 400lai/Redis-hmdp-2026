@@ -14,6 +14,7 @@ import com.hmdp.utils.RegexUtils;
 import cn.hutool.core.util.RandomUtil;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +23,7 @@ import javax.servlet.http.HttpSession;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -139,6 +141,63 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 5.使用 Redis SETBIT 命令记录签到，offset 从 0 开始：SETBIT key offset 1
         stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1, true);
         return Result.ok();
+    }
+
+    /**
+     * 查询用户连续签到天数
+     * 通过 Redis 位图存储的签到记录，从当前日期往前统计连续签到的天数
+     * @return Result 返回连续签到天数
+     */
+    @Override
+    public Result signCount() {
+        // 1.获取当前登录用户 ID
+        Long userId = UserHolder.getUser().getId();
+
+        // 2.获取当前日期时间
+        LocalDateTime now = LocalDateTime.now();
+
+        // 3.构建 Redis 位图 Key：用户签到前缀 + 用户 ID + 年月
+        String keySuffix = now.format(DateTimeFormatter.ofPattern("yyyyMM"));
+        String key = USER_SIGN_KEY + userId + keySuffix;
+
+        // 4.获取今天是本月的第几天（1-31）
+        int dayOfMonth = now.getDayOfMonth();
+        // 使用 Redis BITFIELD 命令获取本月截止今天的签到记录，返回一个无符号整数(十进制)
+        // BITFIELD sign:5:202203 GET u14 0
+        List<Long> result = stringRedisTemplate.opsForValue().bitField(
+                key,
+                // 创建 Redis BITFIELD 命令构建器，用于构造位图字段操作命令
+                BitFieldSubCommands.create().
+                        // 配置 BITFIELD 的 GET 操作：读取从偏移量 0 开始、位数为 dayOfMonth 的无符号整数，用于
+                        get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0)
+        );
+
+        // 判断查询结果是否为空
+        if(result == null || result.size() == 0){
+            // 没有任何签到结果
+            return Result.ok(0);
+        }
+        Long num = result.get(0);
+        if (num == null || num == 0L){
+            return Result.ok(0);
+        }
+
+        // 通过位运算统计从低位开始连续的 1 的个数（即连续签到天数）
+        int count = 0;
+        while(true){
+            // 6.1 让这个数字与1做与运算，得到数字的最后一个bit位
+            // 检查最低位是否为 1（已签到）
+            if((num & 1) == 0){
+                // 如果是0，说明未签到，结束
+                break;
+            }else{
+                // 如果不为0，说明已签到，计数器+1
+                count++;
+            }
+            /// 无符号右移一位，继续检查下一个bit位
+            num >>>= 1;     // num = num >>> 1
+        }
+        return Result.ok(count);
     }
 
     /**
