@@ -33,5 +33,5 @@ build/
 .vscode/
 
 ### 敏感配置 ###
-src/main/resources/application.yaml
+src/main/resources/application.yml
 src/test/resources/application.yaml

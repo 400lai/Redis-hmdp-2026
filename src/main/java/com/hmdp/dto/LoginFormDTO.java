@@ -1,5 +1,6 @@
 package com.hmdp.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 /**
@@ -7,20 +8,15 @@ import lombok.Data;
  * 支持两种登录方式：手机号验证码登录和密码登录
  */
 @Data
+@Schema(description = "登录表单数据")
 public class LoginFormDTO {
-    /**
-     * 用户手机号码，用于登录验证和用户标识
-     */
+    @Schema(description = "手机号码", example = "13800138000")
     private String phone;
 
-    /**
-     * 短信验证码，用于手机号验证码登录方式
-     */
+    @Schema(description = "短信验证码", example = "123456")
     private String code;
 
-    /**
-     * 用户密码，用于密码登录方式
-     */
+    @Schema(description = "密码", example = "password123")
     private String password;
 }
 

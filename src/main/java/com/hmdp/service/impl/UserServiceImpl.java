@@ -13,13 +13,13 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
 import cn.hutool.core.util.RandomUtil;
 import com.hmdp.utils.UserHolder;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpSession;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;

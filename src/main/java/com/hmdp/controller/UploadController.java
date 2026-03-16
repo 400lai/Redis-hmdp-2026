@@ -4,6 +4,9 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import com.hmdp.dto.Result;
 import com.hmdp.utils.SystemConstants;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,25 +19,19 @@ import java.util.UUID;
  * 文件上传控制器 - 处理博客图片的上传和删除操作
  */
 @Slf4j
+@Tag(name = "文件上传", description = "图片上传、删除等接口")
 @RestController
 @RequestMapping("upload")
 public class UploadController {
 
-    /**
-     * 上传博客图片
-     * @param image 上传的图片文件
-     * @return 操作结果，成功返回保存后的文件名
-     */
+    @Operation(summary = "上传图片", description = "上传博客图片")
     @PostMapping("blog")
-    public Result uploadImage(@RequestParam("file") MultipartFile image) {
+    public Result uploadImage(
+            @Parameter(description = "上传的图片文件", required = true) @RequestParam("file") MultipartFile image) {
         try {
-            // 获取原始文件名称
             String originalFilename = image.getOriginalFilename();
-            // 生成新文件名
             String fileName = createNewFileName(originalFilename);
-            // 保存文件
             image.transferTo(new File(SystemConstants.IMAGE_UPLOAD_DIR, fileName));
-            // 返回结果
             log.debug("文件上传成功，{}", fileName);
             return Result.ok(fileName);
         } catch (IOException e) {
@@ -42,13 +39,10 @@ public class UploadController {
         }
     }
 
-    /**
-     * 删除博客图片
-     * @param filename 要删除的文件名
-     * @return 操作结果
-     */
+    @Operation(summary = "删除图片", description = "删除博客图片")
     @GetMapping("/blog/delete")
-    public Result deleteBlogImg(@RequestParam("name") String filename) {
+    public Result deleteBlogImg(
+            @Parameter(description = "要删除的文件名", required = true) @RequestParam("name") String filename) {
         File file = new File(SystemConstants.IMAGE_UPLOAD_DIR, filename);
         if (file.isDirectory()) {
             return Result.fail("错误的文件名称");

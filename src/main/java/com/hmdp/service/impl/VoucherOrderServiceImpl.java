@@ -9,6 +9,8 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -20,8 +22,6 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -343,8 +343,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = voucherOrder.getId();
 
         // 5.1 查询用户是否已购买过该优惠券
-        int count = query().eq("user_id", userId)
-                .eq("voucher_id", voucherOrder.getVoucherId())    // 指定优惠券id
+        long count = query().eq("user_id", userId)
+                .eq("voucher_id", voucherOrder.getVoucherId())    // 指定优惠券 id
                 .count();
 
         // 5.2 校验是否超过购买限制
